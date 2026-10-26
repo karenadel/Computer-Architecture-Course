@@ -5,17 +5,17 @@ use ieee.numeric_std.all;
 entity elevator_ctrl is
     generic(
         N_FLOORS : positive := 10;
-        CLK_DIV  : positive := 50_000_000
+        CLK_DIV : positive := 50_000_000
     );
     port(
-        clk       : in  std_logic;
-        rst       : in  std_logic;
-        floorNum  : in  std_logic_vector(3 downto 0);
-        key       : in  std_logic;
-        mv_up     : out std_logic;
-        mv_dn     : out std_logic;
+        clk : in  std_logic;
+        rst : in  std_logic;
+        floorNum : in  std_logic_vector(3 downto 0);
+        key : in  std_logic;
+        mv_up : out std_logic;
+        mv_dn : out std_logic;
         door_open : out std_logic;
-        floor     : out std_logic_vector(3 downto 0);
+        floor : out std_logic_vector(3 downto 0);
         floor_ssd : out std_logic_vector(6 downto 0)
     );
 end elevator_ctrl;
@@ -24,7 +24,7 @@ architecture arch_ctrl of elevator_ctrl is
 
     component ssd
         port(
-            input  : in  std_logic_vector(3 downto 0);
+            input : in  std_logic_vector(3 downto 0);
             output : out std_logic_vector(6 downto 0)
         );
     end component;
@@ -34,17 +34,17 @@ architecture arch_ctrl of elevator_ctrl is
 
     signal pendingRequests : std_logic_vector(N_FLOORS-1 downto 0) := (others => '0');
 
-    signal pendingLarger  : std_logic := '0';
+    signal pendingLarger : std_logic := '0';
     signal pendingSmaller : std_logic := '0';
 
     signal timer, next_timer : integer range 0 to 1 := 0;
-    signal dir, next_dir     : std_logic := '1';
+    signal dir, next_dir : std_logic := '1';
 
     signal floor_reg, next_floor : integer range 0 to N_FLOORS-1 := 0;
     signal floor_bin : std_logic_vector(3 downto 0);
 
     signal sec_en : std_logic := '0';
-    signal cnt    : integer range 0 to CLK_DIV-1 := 0;
+    signal cnt : integer range 0 to CLK_DIV-1 := 0;
 
     signal key_s1, key_s2, key_prev : std_logic := '1';
 
@@ -57,12 +57,12 @@ begin
     process(clk, rst) -- prescaler
     begin
         if rst = '0' then
-            cnt    <= 0;
+            cnt <= 0;
             sec_en <= '0';
         elsif rising_edge(clk) then
             sec_en <= '0';
             if cnt = CLK_DIV-1 then
-                cnt    <= 0;
+                cnt <= 0;
                 sec_en <= '1';
             else
                 cnt <= cnt + 1;
@@ -73,15 +73,15 @@ begin
     process(clk, rst) -- register
     begin
         if rst = '0' then
-            state     <= doorClosed;
-            timer     <= 0;
-            dir       <= '1';
+            state <= doorClosed;
+            timer <= 0;
+            dir <= '1';
             floor_reg <= 0;
         elsif rising_edge(clk) then
             if sec_en = '1' then
-                state     <= next_state;
-                timer     <= next_timer;
-                dir       <= next_dir;
+                state <= next_state;
+                timer <= next_timer;
+                dir <= next_dir;
                 floor_reg <= next_floor;
             end if;
         end if;
@@ -91,13 +91,13 @@ begin
         variable f : integer;
     begin
         if rst = '0' then
-            key_s1   <= '1';
-            key_s2   <= '1';
+            key_s1 <= '1';
+            key_s2 <= '1';
             key_prev <= '1';
             pendingRequests <= (others => '0');
         elsif rising_edge(clk) then
-            key_s1   <= key;
-            key_s2   <= key_s1;
+            key_s1 <= key;
+            key_s2 <= key_s1;
             key_prev <= key_s2;
 
             if state = doorOpen then
@@ -116,15 +116,15 @@ begin
     process(pendingRequests, floor_reg)
         variable larger, smaller : std_logic;
     begin
-        larger  := '0';
+        larger := '0';
         smaller := '0';
         for i in 0 to N_FLOORS-1 loop
             if pendingRequests(i) = '1' then
-                if i > floor_reg then larger  := '1'; end if;
+                if i > floor_reg then larger := '1'; end if;
                 if i < floor_reg then smaller := '1'; end if;
             end if;
         end loop;
-        pendingLarger  <= larger;
+        pendingLarger <= larger;
         pendingSmaller <= smaller;
     end process;
 
@@ -133,7 +133,7 @@ begin
     begin
         next_state <= state;
         next_timer <= timer;
-        next_dir   <= dir;
+        next_dir <= dir;
         next_floor <= floor_reg;
 ------------------------------------------------------------------------
         case state is
@@ -145,18 +145,18 @@ begin
                 elsif dir = '1' then
                     if pendingLarger = '1' then
                         next_state <= movingUp;
-                        next_dir   <= '1';
+                        next_dir <= '1';
                     elsif pendingSmaller = '1' then
                         next_state <= movingDown;
-                        next_dir   <= '0';
+                        next_dir <= '0';
                     end if;
                 else
                     if pendingSmaller = '1' then
                         next_state <= movingDown;
-                        next_dir   <= '0';
+                        next_dir <= '0';
                     elsif pendingLarger = '1' then
                         next_state <= movingUp;
-                        next_dir   <= '1';
+                        next_dir <= '1';
                     end if;
                 end if;
 
@@ -203,8 +203,8 @@ begin
 
 -------------------------------------------------------------------------------------------------
 --maybe led's lighting up
-    mv_up     <= '1' when state = movingUp   else '0';
-    mv_dn     <= '1' when state = movingDown else '0';
+    mv_up <= '1' when state = movingUp   else '0';
+    mv_dn <= '1' when state = movingDown else '0';
     door_open <= '1' when state = doorOpen   else '0';
 
 end arch_ctrl;
