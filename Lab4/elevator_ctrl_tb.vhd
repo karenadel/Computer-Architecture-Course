@@ -35,13 +35,14 @@ architecture arch_ctrl_tb of elevator_ctrl_tb is
     signal door_open : std_logic;
     signal floor : std_logic_vector(3 downto 0);
     signal floor_ssd : std_logic_vector(6 downto 0);
+    signal done : boolean := false;
 begin
-    clk <= not clk after CLK_PERIOD/2;
+    clk <= not clk after CLK_PERIOD/2 when not done else '0';
 
     uut : elevator_ctrl
         generic map(
             N_FLOORS => 10,
-            CLK_DIV  => 50_000_000
+            CLK_DIV  => 4
         )
         port map(
             clk => clk,
@@ -55,138 +56,166 @@ begin
             floor_ssd => floor_ssd
         );
 
-        process
-        begin
-            --idle state test
-            rst <= '0';
-            wait for 100 ns;
-            Assert (state = doorClosed and timer = 0 and dir = '1' and floor_reg = 0 and mv_up='0' and mv_dn='0' and door_open='0') 
-            report "Reset failed" 
+    process(mv_up, mv_dn, door_open)
+    begin
+        assert not (door_open = '1' and (mv_up = '1' or mv_dn = '1'))
+            report "Door open while elevator moving"
             severity error;
-            
-            --request current floor while idle
-            rst<='1';
-            wait for 100 ns;
-            floorNum<=(others=>'0');
-            key<='0';
-            wait for 100 ns;
-            key <= '1';       
-            wait for 200 ns;
-            Assert state = doorOpen
-            report "request current floor while idle failed" 
+        assert not (mv_up = '1' and mv_dn = '1')
+            report "mv_up and mv_dn high at the same time"
+            severity error;
+    end process;
+
+    process
+    begin
+        --idle state test
+        rst <= '0';
+        wait for 100 ns;
+        assert to_integer(unsigned(floor)) = 0 and mv_up = '0' and mv_dn = '0' and door_open = '0'
+            report "Reset failed"
             severity error;
 
-            --request floor above current
-            floorNum<="0011";
-            key<='0';
-            wait for 100 ns;
-            key <= '1';      
-            wait for 100 ns;
-            assert mv_up = '1'
-                report "Elevator did not move up"
-                severity error;
-            wait for 240 ns;
-            assert unsigned(floor) = 3
-                report "Elevator did not reach floor 3"
-                severity error;
-            wait for 100 ns;
-            assert door_open = '1'
-                report "Door did not open at floor 3"
-                severity error;
+        --request current floor while idle
+        rst <= '1';
+        wait for 100 ns;
+        floorNum <= (others => '0');
+        key <= '0';
+        wait for 100 ns;
+        key <= '1';
+        if door_open = '0' then
+            wait until door_open = '1' for 1 us;
+        end if;
+        assert door_open = '1'
+            report "request current floor while idle failed"
+            severity error;
 
-            --Request a lower floor
-            floorNum <= "0001";
-            key <= '0';
-            wait for 100 ns;
-            key <= '1';
-            wait for 100 ns;
-            assert mv_dn = '1'
-                report "Elevator did not move down"
-                severity error;
-            wait for 400 ns;
-            assert unsigned(floor) = 1
-                report "Elevator did not reach floor 1"
-                severity error;
-            wait for 100 ns;
-            assert door_open = '1'
-                report "Door did not open at floor 1"
-                severity error;
+        --request floor above current
+        floorNum <= "0011";
+        wait for 100 ns;
+        key <= '0';
+        wait for 100 ns;
+        key <= '1';
+        wait for 200 ns;
+        assert mv_up = '1'
+            report "Elevator did not move up"
+            severity error;
+        wait until to_integer(unsigned(floor)) = 3 for 2 us;
+        assert to_integer(unsigned(floor)) = 3
+            report "Elevator did not reach floor 3"
+            severity error;
+        wait for 100 ns;
+        assert door_open = '1'
+            report "Door did not open at floor 3"
+            severity error;
 
-            --Multiple requests
-            floorNum <= "0011";
-            key <= '0';
-            wait for 100 ns;
-            key <= '1';
-            wait for 100 ns;
-            floorNum <= "0101";
-            wait for 100 ns;
-            key <= '0';
-            wait for 100 ns;
-            key <= '1';
-            wait for 400 ns;
-            assert unsigned(floor) = 3
-                report "Elevator did not reach floor 3"
-                severity error;
-            wait for 500 ns;
-            assert unsigned(floor) = 5
-                report "Elevator did not reach floor 5"
-                severity error;
+        --Request a lower floor
+        floorNum <= "0001";
+        wait for 100 ns;
+        key <= '0';
+        wait for 100 ns;
+        key <= '1';
+        wait for 200 ns;
+        assert mv_dn = '1'
+            report "Elevator did not move down"
+            severity error;
+        wait until to_integer(unsigned(floor)) = 1 for 2 us;
+        assert to_integer(unsigned(floor)) = 1
+            report "Elevator did not reach floor 1"
+            severity error;
+        wait for 100 ns;
+        assert door_open = '1'
+            report "Door did not open at floor 1"
+            severity error;
 
-            --Request top floor (floor 9)
-            floorNum <= "1001";
-            key <= '0';
-            wait for 100 ns;
-            key <= '1';
-            wait for 1200 ns;
-            assert unsigned(floor) = 9
-                report "Elevator did not reach top floor"
-                severity error;
-            assert mv_up = '0'
-                report "Elevator still moving up at top floor"
-                severity error;
+        --Multiple requests
+        floorNum <= "0011";
+        wait for 100 ns;
+        key <= '0';
+        wait for 100 ns;
+        key <= '1';
+        wait for 100 ns;
+        floorNum <= "0101";
+        wait for 100 ns;
+        key <= '0';
+        wait for 100 ns;
+        key <= '1';
+        wait until to_integer(unsigned(floor)) = 3 for 2 us;
+        assert to_integer(unsigned(floor)) = 3
+            report "Elevator did not reach floor 3"
+            severity error;
+        wait until to_integer(unsigned(floor)) = 5 for 2 us;
+        assert to_integer(unsigned(floor)) = 5
+            report "Elevator did not reach floor 5"
+            severity error;
 
-            --Request lower floor (floor 0)
-            floorNum <= "0000";
-            key <= '0';
-            wait for 100 ns;
-            key <= '1';
-            wait for 1200 ns;
-            assert unsigned(floor) = 0
-                report "Elevator did not return to floor 0"
-                severity error;
-            assert mv_dn = '0'
-                report "Elevator still moving down at floor 0"
-                severity error;
+        --Request top floor (floor 9)
+        floorNum <= "1001";
+        wait for 100 ns;
+        key <= '0';
+        wait for 100 ns;
+        key <= '1';
+        wait until to_integer(unsigned(floor)) = 9 for 5 us;
+        assert to_integer(unsigned(floor)) = 9
+            report "Elevator did not reach top floor"
+            severity error;
+        assert mv_up = '0'
+            report "Elevator still moving up at top floor"
+            severity error;
 
-            --Reset while moving
-            floorNum <= "0101";
-            key <= '0';
-            wait for 100 ns;
-            key <= '1';
-            wait for 150 ns;
-            rst <= '0';
-            wait for 20 ns;
-            assert unsigned(floor) = 0
-                report "Floor did not reset to 0"
-                severity error;
-            assert mv_up = '0' and mv_dn = '0'
-                report "Movement outputs not cleared by reset"
-                severity error;
-            assert door_open = '0'
-                report "Door output not cleared by reset"
-                severity error;
+        --Request lower floor (floor 0)
+        floorNum <= "0000";
+        wait for 100 ns;
+        key <= '0';
+        wait for 100 ns;
+        key <= '1';
+        wait until to_integer(unsigned(floor)) = 0 for 5 us;
+        assert to_integer(unsigned(floor)) = 0
+            report "Elevator did not return to floor 0"
+            severity error;
+        assert mv_dn = '0'
+            report "Elevator still moving down at floor 0"
+            severity error;
 
-            --Invalid floor request
-            rst <= '1';
-            wait for 100 ns;
-            floorNum <= "1100";
-            key <= '0';
-            wait for 100 ns;
-            key <= '1';
-            wait for 200 ns;
-            assert unsigned(floor) < 10
-                report "Elevator entered an invalid floor"
-                severity error;
+        --Reset while moving
+        floorNum <= "0101";
+        wait for 100 ns;
+        key <= '0';
+        wait for 100 ns;
+        key <= '1';
+        wait until to_integer(unsigned(floor)) = 2 for 2 us;
+        assert mv_up = '1'
+            report "Elevator was not moving before reset"
+            severity error;
+        rst <= '0';
+        wait for 20 ns;
+        assert to_integer(unsigned(floor)) = 0
+            report "Floor did not reset to 0"
+            severity error;
+        assert mv_up = '0' and mv_dn = '0'
+            report "Movement outputs not cleared by reset"
+            severity error;
+        assert door_open = '0'
+            report "Door output not cleared by reset"
+            severity error;
 
-            wait;
+        --Invalid floor request
+        rst <= '1';
+        wait for 100 ns;
+        floorNum <= "1100";
+        wait for 100 ns;
+        key <= '0';
+        wait for 100 ns;
+        key <= '1';
+        wait for 200 ns;
+        assert to_integer(unsigned(floor)) < 10
+            report "Elevator entered an invalid floor"
+            severity error;
+        assert mv_up = '0' and mv_dn = '0' and door_open = '0'
+            report "Elevator reacted to an invalid floor request"
+            severity error;
 
+        report "Testbench finished";
+        done <= true;
+        wait;
+    end process;
+end arch_ctrl_tb;
